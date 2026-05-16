@@ -83,6 +83,7 @@ export default class MarkPagePlugin extends Plugin {
 		if (this.server) return;
 
 		const port = this.settings.serverPort;
+		const plugin = this;
 
 		this.server = http.createServer((req, res) => {
 			res.setHeader('Access-Control-Allow-Origin', '*');
@@ -96,6 +97,46 @@ export default class MarkPagePlugin extends Plugin {
 			}
 
 			const url = new URL(req.url || '/', `http://localhost:${port}`);
+
+			// ─── Vault Image Endpoint ─────────────────────────────────────
+			// 浏览器 <img> 标签直接从这里加载图片
+			// 用法: GET /vault-image?p=attachments/image.png
+			if (req.method === 'GET' && url.pathname === '/vault-image') {
+				const vaultPath = url.searchParams.get('p');
+				if (!vaultPath) {
+					res.writeHead(400, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Missing p parameter' }));
+					return;
+				}
+				const file = plugin.app.vault.getAbstractFileByPath(vaultPath);
+				if (!file || !(file instanceof TFile)) {
+					res.writeHead(404, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'File not found: ' + vaultPath }));
+					return;
+				}
+				const ext = file.extension.toLowerCase();
+				const mimeMap: Record<string, string> = {
+					png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+					gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+				};
+				const mime = mimeMap[ext];
+				if (!mime) {
+					res.writeHead(415, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Not an image file' }));
+					return;
+				}
+				plugin.app.vault.readBinary(file).then(binary => {
+					res.writeHead(200, {
+						'Content-Type': mime,
+						'Cache-Control': 'public, max-age=3600',
+					});
+					res.end(Buffer.from(binary));
+				}).catch(() => {
+					res.writeHead(500, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Failed to read file' }));
+				});
+				return;
+			}
 
 			if (url.pathname === '/health') {
 				res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -249,49 +290,118 @@ export default class MarkPagePlugin extends Plugin {
 	}
 
 	// ─── Image Processing ────────────────────────────────────────────────────
+	//
+	// Obsidian 有两种图片格式：
+	//   1. Wikilink: ![[image.png]] 或 ![[image.png|300]]
+	//   2. 标准 Markdown: ![alt text](path/to/image.png)
+	//
+	// 核心思路：不塞 base64，而是把 vault 路径编码成短 URL
+	// 浏览器 <img> 标签从插件本地 HTTP 服务加载图片
+	// 同一张 vault 图片只保留一次，避免重复
 
 	async processImages(markdown: string, sourceFile: TFile): Promise<string> {
 		const sourceDir = sourceFile.parent?.path || '';
-		let processed = markdown;
+		const baseUrl = `http://localhost:${this.settings.serverPort}`;
+		const processedFiles = new Set<string>(); // 已处理的 vault 文件路径，用于去重
+		let imageCount = 0;
+		let failCount = 0;
+		const failedNames: string[] = [];
 
+		// ── Pass 1: Wikilink 图片 ![[image.png]] ──────────────────────────────
 		const wikiLinkRegex = /!\[\[([^\]]+\.(png|jpg|jpeg|gif|webp|svg|bmp))(?:\|([^\]]*))?\]\]/gi;
 		const wikiMatches = [...markdown.matchAll(wikiLinkRegex)];
 		for (const match of wikiMatches) {
 			const fullMatch = match[0];
 			const imageName = match[1];
 			const sizeHint = match[3] || '';
-			const imageFile = this.findImageFile(imageName);
-			if (imageFile) {
-				const url = await this.imageToBase64(imageFile);
-				const altText = sizeHint ? `${imageName}|${sizeHint}` : imageName;
-				processed = processed.replace(fullMatch, `![${altText}](${url})`);
+			try {
+				const imageFile = this.findImageFile(imageName);
+				if (imageFile) {
+					if (processedFiles.has(imageFile.path)) {
+						// 同一张图已经处理过了，删除重复引用
+						markdown = markdown.replace(fullMatch, '');
+						continue;
+					}
+					processedFiles.add(imageFile.path);
+					const imageUrl = `${baseUrl}/vault-image?p=${encodeURIComponent(imageFile.path)}`;
+					const altText = sizeHint ? `${imageName}|${sizeHint}` : imageName;
+					markdown = markdown.replace(fullMatch, `![${altText}](${imageUrl})`);
+					imageCount++;
+				} else {
+					failCount++;
+					failedNames.push(imageName);
+				}
+			} catch (e) {
+				failCount++;
+				failedNames.push(imageName);
 			}
 		}
 
-		const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/gi;
-		const mdMatches = [...processed.matchAll(mdImageRegex)];
+		// ── Pass 2: 标准 Markdown 图片 ![alt](path) ───────────────────────────
+		//   也覆盖普通链接 [alt](image.jpg) 指向本地图片的情况
+		const mdImageRegex = /!?\[([^\]]*)\]\(([^)]+)\)/gi;
+		const mdMatches = [...markdown.matchAll(mdImageRegex)];
 		for (const match of mdMatches) {
 			const fullMatch = match[0];
 			const alt = match[1];
 			const imagePath = match[2];
-			if (imagePath.startsWith('http') || imagePath.startsWith('data:') || imagePath.startsWith('app://')) continue;
-			const imageFile = this.resolveLocalImage(imagePath, sourceDir);
-			if (imageFile) {
-				const url = await this.imageToBase64(imageFile);
-				processed = processed.replace(fullMatch, `![${alt}](${url})`);
+			const isImage = fullMatch.startsWith('!');
+
+			// 跳过已处理的 localhost URL / 网络图片 / data URL / 空
+			if (imagePath.startsWith('http') || imagePath.startsWith('data:') || imagePath.startsWith('app://') || imagePath === '') continue;
+
+			// 解码 URL 编码的路径（如 %20 → 空格）
+			const decodedPath = decodeURIComponent(imagePath);
+
+			// 非图片链接（没有 ! 前缀），只处理指向本地图片文件的
+			if (!isImage && !/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(decodedPath)) continue;
+
+			try {
+				const imageFile = this.resolveLocalImage(decodedPath, sourceDir) || this.findImageFile(decodedPath);
+				if (imageFile) {
+					if (processedFiles.has(imageFile.path)) {
+						// 同一张图已经处理过了，删除重复引用
+						markdown = markdown.replace(fullMatch, '');
+						continue;
+					}
+					processedFiles.add(imageFile.path);
+					const imageUrl = `${baseUrl}/vault-image?p=${encodeURIComponent(imageFile.path)}`;
+					markdown = markdown.replace(fullMatch, `![${alt}](${imageUrl})`);
+					imageCount++;
+				}
+			} catch (e) {
+				console.error(`MarkPage Sync: failed to process image ${imagePath}:`, e);
 			}
 		}
 
-		return processed;
+		// 提示用户图片处理结果
+		if (imageCount > 0 && failCount === 0) {
+			new Notice(`📷 已处理 ${imageCount} 张图片`);
+		} else if (failCount > 0) {
+			new Notice(`⚠️ ${imageCount} 张图片成功，${failCount} 张未找到: ${failedNames.join(', ')}`);
+		}
+
+		return markdown;
 	}
 
 	findImageFile(imageName: string): TFile | null {
 		const files = this.app.vault.getFiles();
 		const lowerName = imageName.toLowerCase();
-		return files.find(f => f.name.toLowerCase() === lowerName) ||
-			files.find(f => f.path.toLowerCase().endsWith(lowerName)) ||
-			files.find(f => f.path.toLowerCase().includes(lowerName) && /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.path)) ||
-			null;
+
+		// 1. 精确匹配文件名
+		let found = files.find(f => f.name.toLowerCase() === lowerName);
+		if (found) return found;
+
+		// 2. 路径以该文件名结尾（可能在子目录下，如 attachments/xxx.png）
+		found = files.find(f => f.path.toLowerCase().endsWith('/' + lowerName) || f.path.toLowerCase().endsWith('\\' + lowerName));
+		if (found) return found;
+
+		// 3. 路径包含该文件名
+		found = files.find(f =>
+			f.path.toLowerCase().includes(lowerName) &&
+			/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.path)
+		);
+		return found || null;
 	}
 
 	resolveLocalImage(imagePath: string, sourceDir: string): TFile | null {
@@ -306,24 +416,7 @@ export default class MarkPagePlugin extends Plugin {
 		return af instanceof TFile ? af : null;
 	}
 
-	async imageToBase64(imageFile: TFile): Promise<string> {
-		const binary = await this.app.vault.readBinary(imageFile);
-		const ext = imageFile.extension.toLowerCase();
-		const mimeMap: Record<string, string> = {
-			png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-			gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
-		};
-		const mime = mimeMap[ext] || 'image/png';
-		const bytes = new Uint8Array(binary);
-		let binaryStr = '';
-		for (let i = 0; i < bytes.length; i++) {
-			binaryStr += String.fromCharCode(bytes[i]);
-		}
-		return `data:${mime};base64,${btoa(binaryStr)}`;
-	}
-
 	openMarkPage() {
-		// 带上 mcpUrl 参数，让 MarkPage 前端知道往哪轮询
 		const mcpUrl = `http://localhost:${this.settings.serverPort}`;
 		const fullUrl = `${this.settings.markPageUrl}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
 		(window as any).require('electron').shell.openExternal(fullUrl);
