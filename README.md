@@ -1,62 +1,68 @@
-# MarkPage Sync — Obsidian Plugin
+# MarkPage Sync
 
-一键将 Obsidian 笔记（含图片）发送到 [MarkPage](https://markpage.timikays.us.kg/) 编辑器，生成精美排版图片。
+One-click sync your Obsidian notes (with images) to [MarkPage](https://github.com/TimiKays/MarkPage) — a Markdown-to-beautiful-image editor that turns your notes into stunning visuals for social media (Xiaohongshu, Instagram, phone wallpapers, and more).
 
-## 安装
+## Installation
 
-### 方式一：手动安装（现在就能用）
+### From Obsidian Community Plugins (recommended)
 
-1. 下载 `main.js`、`manifest.json`、`styles.css` 三个文件
-2. 放到你的 Obsidian 仓库的 `.obsidian/plugins/markpage-sync/` 文件夹里
-3. 重启 Obsidian → 设置 → 社区插件 → 启用 **MarkPage Sync**
+Search for "MarkPage Sync" in Obsidian Settings → Community Plugins.
 
-### 方式二：插件市场（上架后可用）
+### Manual Installation
 
-在 Obsidian 社区插件中搜索 "MarkPage Sync" 直接安装。
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/TimiKays/markpage-obsidian-plugin/releases)
+2. Place them in your vault's `.obsidian/plugins/markpage-sync/` folder
+3. Restart Obsidian → Settings → Community Plugins → Enable **MarkPage Sync**
 
-## 使用方法
+## How to Use
 
-1. 打开一篇笔记
-2. 点击左侧工具栏的 ✈️ 发送按钮，或按 `Ctrl+P` 输入 "MarkPage"
-3. 浏览器自动打开 MarkPage，内容自动出现
+1. Open a note in Obsidian
+2. Click the ✈️ icon in the left ribbon, or press `Ctrl/Cmd+P` and search "MarkPage"
+3. Your browser opens MarkPage with the note content ready to edit
 
-### 命令
+### Commands
 
-| 命令 | 说明 |
-|------|------|
-| 发送当前笔记到 MarkPage | 一键同步 |
-| 选择主题后发送到 MarkPage | 先选主题再同步 |
+| Command | Description |
+|---------|-------------|
+| Send note to MarkPage | Sync the current note immediately |
+| Send to MarkPage with theme | Pick a theme before syncing |
 
-## 功能
+## Features
 
-- ✅ Markdown 正文同步
-- ✅ 图片自动处理（Obsidian `![[image.png]]` 和标准 `![](path)` 两种格式都支持）
-- ✅ 自动提取标题做封面
-- ✅ 10 种主题可选
-- ✅ 支持 Cloudflare Pages 部署的 MarkPage
-- ✅ 插件自带本地服务，无需额外启动任何东西
+- 📝 Full Markdown content sync
+- 🖼️ Automatic image handling — both `![[image.png]]` (wikilinks) and `![](path)` formats
+- 🎨 10 built-in themes
+- 📄 Auto-extract H1 heading as cover title
+- ☁️ Works with any MarkPage deployment (Cloudflare Pages, self-hosted, etc.)
+- 🔌 Zero dependencies — the plugin runs a local HTTP server, no extra software needed
 
-## 工作原理
+## How It Works
 
-插件在你电脑上开了一个本地服务（端口 3001），MarkPage 网页在浏览器里每 0.5 秒问一次"有新内容吗？"——有的话就显示出来。整个过程不需要安装任何额外软件。
+The plugin starts a lightweight HTTP server on your machine (port 3001 by default). When you hit "send", it pushes your note content to this server. The MarkPage web app polls the server and renders your note automatically. No additional software or server setup required.
 
-## 设置
+Images in your vault are served directly from the plugin's HTTP server — no base64 encoding, no uploading.
 
-| 设置项 | 默认值 | 说明 |
-|--------|--------|------|
-| MarkPage 网址 | https://markpage.timikays.us.kg | 可换成你自己的部署地址 |
-| 默认主题 | 不指定 | 同步时自动应用的主题 |
-| 自动打开浏览器 | 开启 | 同步后是否自动打开浏览器 |
+## Settings
 
-## 要求
+| Setting | Default | Description |
+|---------|---------|-------------|
+| MarkPage URL | `https://markpage.timikays.us.kg` | URL of your MarkPage instance |
+| Default theme | None | Auto-apply a theme when syncing |
+| Auto-open browser | On | Open MarkPage in browser after syncing |
 
-- Obsidian 桌面版 v0.15.0+
-- 需要能访问 MarkPage 网页（在线或本地部署均可）
+## Requirements
 
-## 开发
+- Obsidian desktop v0.15.0+
+- Access to a MarkPage instance (online or self-hosted)
+
+## Development
 
 ```bash
 npm install
-npm run dev      # 开发模式（热更新）
-npm run build    # 生产构建
+npm run dev      # Watch mode
+npm run build    # Production build
 ```
+
+## License
+
+MIT
