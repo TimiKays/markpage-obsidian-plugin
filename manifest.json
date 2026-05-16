@@ -3,7 +3,7 @@
   "name": "MarkPage Sync",
   "version": "1.0.0",
   "minAppVersion": "0.15.0",
-  "description": "Sync Obsidian notes with images to MarkPage editor. One click to send your note to MarkPage for beautiful visual editing.",
+  "description": "Sync notes with images to an external editor. One click to send your note for beautiful visual editing.",
   "author": "TimiKays",
   "authorUrl": "https://github.com/TimiKays",
   "isDesktopOnly": true
