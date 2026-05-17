@@ -1,9 +1,9 @@
 {
   "id": "markpage-sync",
   "name": "MarkPage Sync",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "0.15.0",
-  "description": "Sync notes with images to an external editor. One click to send your note for beautiful visual editing.",
+  "description": "一键将 Obsidian 笔记同步到 MarkPage，生成精美的排版图片。支持图片自动处理、多主题选择。"
   "author": "TimiKays",
   "authorUrl": "https://github.com/TimiKays",
   "isDesktopOnly": true
