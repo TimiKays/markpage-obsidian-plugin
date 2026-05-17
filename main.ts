@@ -1,20 +1,75 @@
 import { App, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath } from 'obsidian';
 import * as http from 'http';
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const MARKPAGE_URL = 'https://markpage.timikays.us.kg';
+
+// ─── Translations ────────────────────────────────────────────────────────────
+
+const TRANSLATIONS = {
+	zh: {
+		sendToMarkPage: '发送到 MarkPage',
+		sendCurrentNote: '发送当前笔记到 MarkPage',
+		sendWithTheme: '选择主题后发送到 MarkPage',
+		settingsTitle: 'MarkPage 同步设置',
+		defaultTheme: '默认主题',
+		defaultThemeDesc: '同步时自动应用的主题（可选）',
+		noTheme: '不指定',
+		language: '界面语言',
+		languageDesc: '插件界面显示语言',
+		zh: '中文',
+		en: 'English',
+		serverPort: '本地服务端口',
+		serverPortDesc: '本地 HTTP 服务端口（默认 3001）',
+		pickTheme: '选择主题',
+		sending: '正在发送到 MarkPage...',
+		sentSuccess: '✅ 已发送到 MarkPage！',
+		sendFailed: '❌ 发送失败',
+		noOpenNote: '没有打开的笔记',
+		noCurrentFile: '找不到当前文件',
+		imagesProcessed: '📷 已处理 {count} 张图片',
+		imagesFailed: '⚠️ {success} 张图片成功，{fail} 张未找到: {names}',
+		serverStartFailed: '本地服务启动失败',
+	},
+	en: {
+		sendToMarkPage: 'Send to MarkPage',
+		sendCurrentNote: 'Send current note to MarkPage',
+		sendWithTheme: 'Send to MarkPage with theme',
+		settingsTitle: 'MarkPage Sync Settings',
+		defaultTheme: 'Default Theme',
+		defaultThemeDesc: 'Auto-apply theme when syncing (optional)',
+		noTheme: 'None',
+		language: 'Language',
+		languageDesc: 'Plugin interface language',
+		zh: '中文',
+		en: 'English',
+		serverPort: 'Local Server Port',
+		serverPortDesc: 'Local HTTP server port (default: 3001)',
+		pickTheme: 'Pick Theme',
+		sending: 'Sending to MarkPage...',
+		sentSuccess: '✅ Sent to MarkPage!',
+		sendFailed: '❌ Send failed',
+		noOpenNote: 'No note is open',
+		noCurrentFile: 'Cannot find current file',
+		imagesProcessed: '📷 Processed {count} images',
+		imagesFailed: '⚠️ {success} images succeeded, {fail} not found: {names}',
+		serverStartFailed: 'Local server failed to start',
+	},
+};
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 interface MarkPagePluginSettings {
-	markPageUrl: string;
-	autoOpenBrowser: boolean;
 	defaultTheme: string;
 	serverPort: number;
+	language: 'zh' | 'en';
 }
 
 const DEFAULT_SETTINGS: MarkPagePluginSettings = {
-	markPageUrl: 'https://markpage.timikays.us.kg',
-	autoOpenBrowser: true,
 	defaultTheme: '',
 	serverPort: 3001,
+	language: 'zh',
 };
 
 // ─── Pending State ───────────────────────────────────────────────────────────
@@ -31,17 +86,21 @@ export default class MarkPagePlugin extends Plugin {
 	settings: MarkPagePluginSettings = DEFAULT_SETTINGS;
 	private server: http.Server | null = null;
 
+	get t() {
+		return TRANSLATIONS[this.settings.language];
+	}
+
 	async onload() {
 		await this.loadSettings();
 		this.startLocalServer();
 
-		this.addRibbonIcon('send', '发送到 MarkPage', async () => {
+		this.addRibbonIcon('send', this.t.sendToMarkPage, async () => {
 			await this.syncToMarkPage();
 		});
 
 		this.addCommand({
 			id: 'sync-to-markpage',
-			name: '发送当前笔记到 MarkPage',
+			name: this.t.sendCurrentNote,
 			checkCallback: (checking: boolean) => {
 				const active = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (!active) return false;
@@ -52,7 +111,7 @@ export default class MarkPagePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'sync-to-markpage-pick-theme',
-			name: '选择主题后发送到 MarkPage',
+			name: this.t.sendWithTheme,
 			checkCallback: (checking: boolean) => {
 				const active = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (!active) return false;
@@ -99,8 +158,6 @@ export default class MarkPagePlugin extends Plugin {
 			const url = new URL(req.url || '/', `http://localhost:${port}`);
 
 			// ─── Vault Image Endpoint ─────────────────────────────────────
-			// 浏览器 <img> 标签直接从这里加载图片
-			// 用法: GET /vault-image?p=attachments/image.png
 			if (req.method === 'GET' && url.pathname === '/vault-image') {
 				const vaultPath = url.searchParams.get('p');
 				if (!vaultPath) {
@@ -225,7 +282,7 @@ export default class MarkPagePlugin extends Plugin {
 
 		this.server.on('error', (err: Error) => {
 			console.error('MarkPage Sync server error:', err);
-			new Notice(`本地服务启动失败: ${err.message}`);
+			new Notice(`${this.t.serverStartFailed}: ${err.message}`);
 		});
 	}
 
@@ -246,17 +303,17 @@ export default class MarkPagePlugin extends Plugin {
 	async syncToMarkPage(overrideTheme?: string) {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView) {
-			new Notice('没有打开的笔记');
+			new Notice(this.t.noOpenNote);
 			return;
 		}
 
 		const file = activeView.file;
 		if (!file) {
-			new Notice('找不到当前文件');
+			new Notice(this.t.noCurrentFile);
 			return;
 		}
 
-		new Notice('正在发送到 MarkPage...');
+		new Notice(this.t.sending);
 
 		try {
 			let markdown = await this.app.vault.read(file);
@@ -282,32 +339,21 @@ export default class MarkPagePlugin extends Plugin {
 			}
 
 			pendingConfig = config;
+			this.openMarkPage();
 
-			if (this.settings.autoOpenBrowser) {
-				this.openMarkPage();
-			}
-
-			new Notice('✅ 已发送到 MarkPage！');
+			new Notice(this.t.sentSuccess);
 		} catch (error) {
 			console.error('MarkPage sync error:', error);
-			new Notice(`❌ 发送失败: ${error.message}`);
+			new Notice(`${this.t.sendFailed}: ${error.message}`);
 		}
 	}
 
 	// ─── Image Processing ────────────────────────────────────────────────────
-	//
-	// Obsidian 有两种图片格式：
-	//   1. Wikilink: ![[image.png]] 或 ![[image.png|300]]
-	//   2. 标准 Markdown: ![alt text](path/to/image.png)
-	//
-	// 核心思路：不塞 base64，而是把 vault 路径编码成短 URL
-	// 浏览器 <img> 标签从插件本地 HTTP 服务加载图片
-	// 同一张 vault 图片只保留一次，避免重复
 
 	async processImages(markdown: string, sourceFile: TFile): Promise<string> {
 		const sourceDir = sourceFile.parent?.path || '';
 		const baseUrl = `http://localhost:${this.settings.serverPort}`;
-		const processedFiles = new Set<string>(); // 已处理的 vault 文件路径，用于去重
+		const processedFiles = new Set<string>();
 		let imageCount = 0;
 		let failCount = 0;
 		const failedNames: string[] = [];
@@ -323,7 +369,6 @@ export default class MarkPagePlugin extends Plugin {
 				const imageFile = this.findImageFile(imageName);
 				if (imageFile) {
 					if (processedFiles.has(imageFile.path)) {
-						// 同一张图已经处理过了，删除重复引用
 						markdown = markdown.replace(fullMatch, '');
 						continue;
 					}
@@ -343,7 +388,6 @@ export default class MarkPagePlugin extends Plugin {
 		}
 
 		// ── Pass 2: 标准 Markdown 图片 ![alt](path) ───────────────────────────
-		//   也覆盖普通链接 [alt](image.jpg) 指向本地图片的情况
 		const mdImageRegex = /!?\[([^\]]*)\]\(([^)]+)\)/gi;
 		const mdMatches = [...markdown.matchAll(mdImageRegex)];
 		for (const match of mdMatches) {
@@ -352,20 +396,16 @@ export default class MarkPagePlugin extends Plugin {
 			const imagePath = match[2];
 			const isImage = fullMatch.startsWith('!');
 
-			// 跳过已处理的 localhost URL / 网络图片 / data URL / 空
 			if (imagePath.startsWith('http') || imagePath.startsWith('data:') || imagePath.startsWith('app://') || imagePath === '') continue;
 
-			// 解码 URL 编码的路径（如 %20 → 空格）
 			const decodedPath = decodeURIComponent(imagePath);
 
-			// 非图片链接（没有 ! 前缀），只处理指向本地图片文件的
 			if (!isImage && !/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(decodedPath)) continue;
 
 			try {
 				const imageFile = this.resolveLocalImage(decodedPath, sourceDir) || this.findImageFile(decodedPath);
 				if (imageFile) {
 					if (processedFiles.has(imageFile.path)) {
-						// 同一张图已经处理过了，删除重复引用
 						markdown = markdown.replace(fullMatch, '');
 						continue;
 					}
@@ -379,11 +419,13 @@ export default class MarkPagePlugin extends Plugin {
 			}
 		}
 
-		// 提示用户图片处理结果
 		if (imageCount > 0 && failCount === 0) {
-			new Notice(`📷 已处理 ${imageCount} 张图片`);
+			new Notice(this.t.imagesProcessed.replace('{count}', String(imageCount)));
 		} else if (failCount > 0) {
-			new Notice(`⚠️ ${imageCount} 张图片成功，${failCount} 张未找到: ${failedNames.join(', ')}`);
+			new Notice(this.t.imagesFailed
+				.replace('{success}', String(imageCount))
+				.replace('{fail}', String(failCount))
+				.replace('{names}', failedNames.join(', ')));
 		}
 
 		return markdown;
@@ -393,15 +435,12 @@ export default class MarkPagePlugin extends Plugin {
 		const files = this.app.vault.getFiles();
 		const lowerName = imageName.toLowerCase();
 
-		// 1. 精确匹配文件名
 		let found = files.find(f => f.name.toLowerCase() === lowerName);
 		if (found) return found;
 
-		// 2. 路径以该文件名结尾（可能在子目录下，如 attachments/xxx.png）
 		found = files.find(f => f.path.toLowerCase().endsWith('/' + lowerName) || f.path.toLowerCase().endsWith('\\' + lowerName));
 		if (found) return found;
 
-		// 3. 路径包含该文件名
 		found = files.find(f =>
 			f.path.toLowerCase().includes(lowerName) &&
 			/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(f.path)
@@ -423,7 +462,7 @@ export default class MarkPagePlugin extends Plugin {
 
 	openMarkPage() {
 		const mcpUrl = `http://localhost:${this.settings.serverPort}`;
-		const fullUrl = `${this.settings.markPageUrl}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
+		const fullUrl = `${MARKPAGE_URL}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
 		(window as any).require('electron').shell.openExternal(fullUrl);
 	}
 }
@@ -453,8 +492,9 @@ class ThemePickerModal extends Modal {
 
 	onOpen() {
 		const { contentEl } = this;
+		const t = this.plugin.t;
 		contentEl.empty();
-		contentEl.createEl('h2', { text: '选择主题' });
+		contentEl.createEl('h2', { text: t.pickTheme });
 
 		for (const theme of AVAILABLE_THEMES) {
 			const btn = contentEl.createEl('button', {
@@ -491,27 +531,17 @@ class MarkPageSettingTab extends PluginSettingTab {
 
 	display(): void {
 		const { containerEl } = this;
+		const t = this.plugin.t;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'MarkPage 同步设置' });
+		containerEl.createEl('h2', { text: t.settingsTitle });
 
 		new Setting(containerEl)
-			.setName('MarkPage 网址')
-			.setDesc('MarkPage 网页地址，别人也能用同一个地址')
-			.addText(text => text
-				.setPlaceholder('https://markpage.timikays.us.kg')
-				.setValue(this.plugin.settings.markPageUrl)
-				.onChange(async (value) => {
-					this.plugin.settings.markPageUrl = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('默认主题')
-			.setDesc('同步时自动应用的主题（可选）')
+			.setName(t.defaultTheme)
+			.setDesc(t.defaultThemeDesc)
 			.addDropdown(dropdown => {
-				dropdown.addOption('', '不指定');
-				for (const t of AVAILABLE_THEMES) {
-					dropdown.addOption(t.id, `${t.emoji} ${t.name}`);
+				dropdown.addOption('', t.noTheme);
+				for (const theme of AVAILABLE_THEMES) {
+					dropdown.addOption(theme.id, `${theme.emoji} ${theme.name}`);
 				}
 				dropdown.setValue(this.plugin.settings.defaultTheme)
 					.onChange(async (value) => {
@@ -521,13 +551,32 @@ class MarkPageSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('自动打开浏览器')
-			.setDesc('同步后自动在浏览器打开 MarkPage')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.autoOpenBrowser)
+			.setName(t.language)
+			.setDesc(t.languageDesc)
+			.addDropdown(dropdown => {
+				dropdown.addOption('zh', t.zh);
+				dropdown.addOption('en', t.en);
+				dropdown.setValue(this.plugin.settings.language)
+					.onChange(async (value: 'zh' | 'en') => {
+						this.plugin.settings.language = value;
+						await this.plugin.saveSettings();
+						this.display(); // 刷新界面
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(t.serverPort)
+			.setDesc(t.serverPortDesc)
+			.addText(text => text
+				.setPlaceholder('3001')
+				.setValue(String(this.plugin.settings.serverPort))
 				.onChange(async (value) => {
-					this.plugin.settings.autoOpenBrowser = value;
-					await this.plugin.saveSettings();
+					const port = parseInt(value, 10);
+					if (!isNaN(port) && port > 0 && port < 65536) {
+						this.plugin.settings.serverPort = port;
+						await this.plugin.saveSettings();
+						this.plugin.restartLocalServer();
+					}
 				}));
 	}
 }

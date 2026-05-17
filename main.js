@@ -39,11 +39,61 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var http = __toESM(require("http"));
+var MARKPAGE_URL = "https://markpage.timikays.us.kg";
+var TRANSLATIONS = {
+  zh: {
+    sendToMarkPage: "\u53D1\u9001\u5230 MarkPage",
+    sendCurrentNote: "\u53D1\u9001\u5F53\u524D\u7B14\u8BB0\u5230 MarkPage",
+    sendWithTheme: "\u9009\u62E9\u4E3B\u9898\u540E\u53D1\u9001\u5230 MarkPage",
+    settingsTitle: "MarkPage \u540C\u6B65\u8BBE\u7F6E",
+    defaultTheme: "\u9ED8\u8BA4\u4E3B\u9898",
+    defaultThemeDesc: "\u540C\u6B65\u65F6\u81EA\u52A8\u5E94\u7528\u7684\u4E3B\u9898\uFF08\u53EF\u9009\uFF09",
+    noTheme: "\u4E0D\u6307\u5B9A",
+    language: "\u754C\u9762\u8BED\u8A00",
+    languageDesc: "\u63D2\u4EF6\u754C\u9762\u663E\u793A\u8BED\u8A00",
+    zh: "\u4E2D\u6587",
+    en: "English",
+    serverPort: "\u672C\u5730\u670D\u52A1\u7AEF\u53E3",
+    serverPortDesc: "\u672C\u5730 HTTP \u670D\u52A1\u7AEF\u53E3\uFF08\u9ED8\u8BA4 3001\uFF09",
+    pickTheme: "\u9009\u62E9\u4E3B\u9898",
+    sending: "\u6B63\u5728\u53D1\u9001\u5230 MarkPage...",
+    sentSuccess: "\u2705 \u5DF2\u53D1\u9001\u5230 MarkPage\uFF01",
+    sendFailed: "\u274C \u53D1\u9001\u5931\u8D25",
+    noOpenNote: "\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0",
+    noCurrentFile: "\u627E\u4E0D\u5230\u5F53\u524D\u6587\u4EF6",
+    imagesProcessed: "\u{1F4F7} \u5DF2\u5904\u7406 {count} \u5F20\u56FE\u7247",
+    imagesFailed: "\u26A0\uFE0F {success} \u5F20\u56FE\u7247\u6210\u529F\uFF0C{fail} \u5F20\u672A\u627E\u5230: {names}",
+    serverStartFailed: "\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25"
+  },
+  en: {
+    sendToMarkPage: "Send to MarkPage",
+    sendCurrentNote: "Send current note to MarkPage",
+    sendWithTheme: "Send to MarkPage with theme",
+    settingsTitle: "MarkPage Sync Settings",
+    defaultTheme: "Default Theme",
+    defaultThemeDesc: "Auto-apply theme when syncing (optional)",
+    noTheme: "None",
+    language: "Language",
+    languageDesc: "Plugin interface language",
+    zh: "\u4E2D\u6587",
+    en: "English",
+    serverPort: "Local Server Port",
+    serverPortDesc: "Local HTTP server port (default: 3001)",
+    pickTheme: "Pick Theme",
+    sending: "Sending to MarkPage...",
+    sentSuccess: "\u2705 Sent to MarkPage!",
+    sendFailed: "\u274C Send failed",
+    noOpenNote: "No note is open",
+    noCurrentFile: "Cannot find current file",
+    imagesProcessed: "\u{1F4F7} Processed {count} images",
+    imagesFailed: "\u26A0\uFE0F {success} images succeeded, {fail} not found: {names}",
+    serverStartFailed: "Local server failed to start"
+  }
+};
 var DEFAULT_SETTINGS = {
-  markPageUrl: "https://markpage.timikays.us.kg",
-  autoOpenBrowser: true,
   defaultTheme: "",
-  serverPort: 3001
+  serverPort: 3001,
+  language: "zh"
 };
 var pendingConfig = null;
 var pendingExport = null;
@@ -56,15 +106,18 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
     this.settings = DEFAULT_SETTINGS;
     this.server = null;
   }
+  get t() {
+    return TRANSLATIONS[this.settings.language];
+  }
   async onload() {
     await this.loadSettings();
     this.startLocalServer();
-    this.addRibbonIcon("send", "\u53D1\u9001\u5230 MarkPage", async () => {
+    this.addRibbonIcon("send", this.t.sendToMarkPage, async () => {
       await this.syncToMarkPage();
     });
     this.addCommand({
       id: "sync-to-markpage",
-      name: "\u53D1\u9001\u5F53\u524D\u7B14\u8BB0\u5230 MarkPage",
+      name: this.t.sendCurrentNote,
       checkCallback: (checking) => {
         const active = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
         if (!active)
@@ -76,7 +129,7 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
     });
     this.addCommand({
       id: "sync-to-markpage-pick-theme",
-      name: "\u9009\u62E9\u4E3B\u9898\u540E\u53D1\u9001\u5230 MarkPage",
+      name: this.t.sendWithTheme,
       checkCallback: (checking) => {
         const active = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
         if (!active)
@@ -256,7 +309,7 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
     });
     this.server.on("error", (err) => {
       console.error("MarkPage Sync server error:", err);
-      new import_obsidian.Notice(`\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25: ${err.message}`);
+      new import_obsidian.Notice(`${this.t.serverStartFailed}: ${err.message}`);
     });
   }
   stopLocalServer() {
@@ -273,15 +326,15 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
   async syncToMarkPage(overrideTheme) {
     const activeView = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
     if (!activeView) {
-      new import_obsidian.Notice("\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0");
+      new import_obsidian.Notice(this.t.noOpenNote);
       return;
     }
     const file = activeView.file;
     if (!file) {
-      new import_obsidian.Notice("\u627E\u4E0D\u5230\u5F53\u524D\u6587\u4EF6");
+      new import_obsidian.Notice(this.t.noCurrentFile);
       return;
     }
-    new import_obsidian.Notice("\u6B63\u5728\u53D1\u9001\u5230 MarkPage...");
+    new import_obsidian.Notice(this.t.sending);
     try {
       let markdown = await this.app.vault.read(file);
       const frontmatterRegex = /^---\s*\n[\s\S]*?\n---\s*\n/;
@@ -299,24 +352,14 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
         };
       }
       pendingConfig = config;
-      if (this.settings.autoOpenBrowser) {
-        this.openMarkPage();
-      }
-      new import_obsidian.Notice("\u2705 \u5DF2\u53D1\u9001\u5230 MarkPage\uFF01");
+      this.openMarkPage();
+      new import_obsidian.Notice(this.t.sentSuccess);
     } catch (error) {
       console.error("MarkPage sync error:", error);
-      new import_obsidian.Notice(`\u274C \u53D1\u9001\u5931\u8D25: ${error.message}`);
+      new import_obsidian.Notice(`${this.t.sendFailed}: ${error.message}`);
     }
   }
   // ─── Image Processing ────────────────────────────────────────────────────
-  //
-  // Obsidian 有两种图片格式：
-  //   1. Wikilink: ![[image.png]] 或 ![[image.png|300]]
-  //   2. 标准 Markdown: ![alt text](path/to/image.png)
-  //
-  // 核心思路：不塞 base64，而是把 vault 路径编码成短 URL
-  // 浏览器 <img> 标签从插件本地 HTTP 服务加载图片
-  // 同一张 vault 图片只保留一次，避免重复
   async processImages(markdown, sourceFile) {
     var _a;
     const sourceDir = ((_a = sourceFile.parent) == null ? void 0 : _a.path) || "";
@@ -381,9 +424,9 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
       }
     }
     if (imageCount > 0 && failCount === 0) {
-      new import_obsidian.Notice(`\u{1F4F7} \u5DF2\u5904\u7406 ${imageCount} \u5F20\u56FE\u7247`);
+      new import_obsidian.Notice(this.t.imagesProcessed.replace("{count}", String(imageCount)));
     } else if (failCount > 0) {
-      new import_obsidian.Notice(`\u26A0\uFE0F ${imageCount} \u5F20\u56FE\u7247\u6210\u529F\uFF0C${failCount} \u5F20\u672A\u627E\u5230: ${failedNames.join(", ")}`);
+      new import_obsidian.Notice(this.t.imagesFailed.replace("{success}", String(imageCount)).replace("{fail}", String(failCount)).replace("{names}", failedNames.join(", ")));
     }
     return markdown;
   }
@@ -415,7 +458,7 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
   }
   openMarkPage() {
     const mcpUrl = `http://localhost:${this.settings.serverPort}`;
-    const fullUrl = `${this.settings.markPageUrl}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
+    const fullUrl = `${MARKPAGE_URL}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
     window.require("electron").shell.openExternal(fullUrl);
   }
 };
@@ -438,8 +481,9 @@ var ThemePickerModal = class extends import_obsidian.Modal {
   }
   onOpen() {
     const { contentEl } = this;
+    const t = this.plugin.t;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "\u9009\u62E9\u4E3B\u9898" });
+    contentEl.createEl("h2", { text: t.pickTheme });
     for (const theme of AVAILABLE_THEMES) {
       const btn = contentEl.createEl("button", {
         text: `${theme.emoji} ${theme.name}`
@@ -474,25 +518,35 @@ var MarkPageSettingTab = class extends import_obsidian.PluginSettingTab {
   }
   display() {
     const { containerEl } = this;
+    const t = this.plugin.t;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "MarkPage \u540C\u6B65\u8BBE\u7F6E" });
-    new import_obsidian.Setting(containerEl).setName("MarkPage \u7F51\u5740").setDesc("MarkPage \u7F51\u9875\u5730\u5740\uFF0C\u522B\u4EBA\u4E5F\u80FD\u7528\u540C\u4E00\u4E2A\u5730\u5740").addText((text) => text.setPlaceholder("https://markpage.timikays.us.kg").setValue(this.plugin.settings.markPageUrl).onChange(async (value) => {
-      this.plugin.settings.markPageUrl = value;
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(containerEl).setName("\u9ED8\u8BA4\u4E3B\u9898").setDesc("\u540C\u6B65\u65F6\u81EA\u52A8\u5E94\u7528\u7684\u4E3B\u9898\uFF08\u53EF\u9009\uFF09").addDropdown((dropdown) => {
-      dropdown.addOption("", "\u4E0D\u6307\u5B9A");
-      for (const t of AVAILABLE_THEMES) {
-        dropdown.addOption(t.id, `${t.emoji} ${t.name}`);
+    containerEl.createEl("h2", { text: t.settingsTitle });
+    new import_obsidian.Setting(containerEl).setName(t.defaultTheme).setDesc(t.defaultThemeDesc).addDropdown((dropdown) => {
+      dropdown.addOption("", t.noTheme);
+      for (const theme of AVAILABLE_THEMES) {
+        dropdown.addOption(theme.id, `${theme.emoji} ${theme.name}`);
       }
       dropdown.setValue(this.plugin.settings.defaultTheme).onChange(async (value) => {
         this.plugin.settings.defaultTheme = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian.Setting(containerEl).setName("\u81EA\u52A8\u6253\u5F00\u6D4F\u89C8\u5668").setDesc("\u540C\u6B65\u540E\u81EA\u52A8\u5728\u6D4F\u89C8\u5668\u6253\u5F00 MarkPage").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenBrowser).onChange(async (value) => {
-      this.plugin.settings.autoOpenBrowser = value;
-      await this.plugin.saveSettings();
+    new import_obsidian.Setting(containerEl).setName(t.language).setDesc(t.languageDesc).addDropdown((dropdown) => {
+      dropdown.addOption("zh", t.zh);
+      dropdown.addOption("en", t.en);
+      dropdown.setValue(this.plugin.settings.language).onChange(async (value) => {
+        this.plugin.settings.language = value;
+        await this.plugin.saveSettings();
+        this.display();
+      });
+    });
+    new import_obsidian.Setting(containerEl).setName(t.serverPort).setDesc(t.serverPortDesc).addText((text) => text.setPlaceholder("3001").setValue(String(this.plugin.settings.serverPort)).onChange(async (value) => {
+      const port = parseInt(value, 10);
+      if (!isNaN(port) && port > 0 && port < 65536) {
+        this.plugin.settings.serverPort = port;
+        await this.plugin.saveSettings();
+        this.plugin.restartLocalServer();
+      }
     }));
   }
 };
