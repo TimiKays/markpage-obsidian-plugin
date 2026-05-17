@@ -284,6 +284,8 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("\u6B63\u5728\u53D1\u9001\u5230 MarkPage...");
     try {
       let markdown = await this.app.vault.read(file);
+      const frontmatterRegex = /^---\s*\n[\s\S]*?\n---\s*\n/;
+      markdown = markdown.replace(frontmatterRegex, "").trimStart();
       markdown = await this.processImages(markdown, file);
       const config = { markdown };
       if (overrideTheme || this.settings.defaultTheme) {

@@ -260,6 +260,11 @@ export default class MarkPagePlugin extends Plugin {
 
 		try {
 			let markdown = await this.app.vault.read(file);
+
+			// 过滤 frontmatter（--- 包裹的 YAML 元数据）
+			const frontmatterRegex = /^---\s*\n[\s\S]*?\n---\s*\n/;
+			markdown = markdown.replace(frontmatterRegex, '').trimStart();
+
 			markdown = await this.processImages(markdown, file);
 
 			const config: Record<string, unknown> = { markdown };
