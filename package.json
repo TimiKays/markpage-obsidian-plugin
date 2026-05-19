@@ -1,6 +1,6 @@
 {
   "name": "markpage-obsidian-plugin",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Sync Obsidian notes with images to MarkPage editor",
   "main": "main.js",
   "scripts": {

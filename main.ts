@@ -324,21 +324,23 @@ export default class MarkPagePlugin extends Plugin {
 
 			markdown = await this.processImages(markdown, file);
 
-			// 通过 URL 参数传递内容
-			const params = new URLSearchParams();
-			params.set('content', markdown);
+			// 通过本地 HTTP 服务传递配置
+			const config: Record<string, unknown> = { markdown };
 
 			if (overrideTheme || this.settings.defaultTheme) {
-				params.set('theme', overrideTheme || this.settings.defaultTheme);
+				config.themeId = overrideTheme || this.settings.defaultTheme;
 			}
 
 			const titleMatch = markdown.match(/^#\s+(.+)$/m);
 			if (titleMatch) {
-				params.set('cover', 'true');
-				params.set('title', titleMatch[1].trim());
+				config.coverConfig = {
+					enabled: true,
+					title: titleMatch[1].trim(),
+				};
 			}
 
-			this.openMarkPage(params);
+			pendingConfig = config;
+			this.openMarkPage();
 
 			new Notice(this.t.sentSuccess);
 		} catch (error) {
@@ -459,11 +461,11 @@ export default class MarkPagePlugin extends Plugin {
 		return af instanceof TFile ? af : null;
 	}
 
-	openMarkPage(params: URLSearchParams) {
-		params.set('mcpUrl', `http://localhost:${this.settings.serverPort}`);
-		// 加时间戳强制刷新，避免浏览器缓存
-		params.set('_t', Date.now().toString());
-		const fullUrl = `${MARKPAGE_URL}?${params.toString()}`;
+	openMarkPage() {
+		const mcpUrl = `http://localhost:${this.settings.serverPort}`;
+		// 加时间戳强制刷新，避免浏览器缓存页面
+		const timestamp = Date.now();
+		const fullUrl = `${MARKPAGE_URL}?mcpUrl=${encodeURIComponent(mcpUrl)}&_t=${timestamp}`;
 		(window as any).require('electron').shell.openExternal(fullUrl);
 	}
 }
