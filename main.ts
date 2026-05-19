@@ -324,22 +324,21 @@ export default class MarkPagePlugin extends Plugin {
 
 			markdown = await this.processImages(markdown, file);
 
-			const config: Record<string, unknown> = { markdown };
+			// 通过 URL 参数传递内容
+			const params = new URLSearchParams();
+			params.set('content', markdown);
 
 			if (overrideTheme || this.settings.defaultTheme) {
-				config.themeId = overrideTheme || this.settings.defaultTheme;
+				params.set('theme', overrideTheme || this.settings.defaultTheme);
 			}
 
 			const titleMatch = markdown.match(/^#\s+(.+)$/m);
 			if (titleMatch) {
-				config.coverConfig = {
-					enabled: true,
-					title: titleMatch[1].trim(),
-				};
+				params.set('cover', 'true');
+				params.set('title', titleMatch[1].trim());
 			}
 
-			pendingConfig = config;
-			this.openMarkPage();
+			this.openMarkPage(params);
 
 			new Notice(this.t.sentSuccess);
 		} catch (error) {
@@ -460,9 +459,11 @@ export default class MarkPagePlugin extends Plugin {
 		return af instanceof TFile ? af : null;
 	}
 
-	openMarkPage() {
-		const mcpUrl = `http://localhost:${this.settings.serverPort}`;
-		const fullUrl = `${MARKPAGE_URL}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
+	openMarkPage(params: URLSearchParams) {
+		params.set('mcpUrl', `http://localhost:${this.settings.serverPort}`);
+		// 加时间戳强制刷新，避免浏览器缓存
+		params.set('_t', Date.now().toString());
+		const fullUrl = `${MARKPAGE_URL}?${params.toString()}`;
 		(window as any).require('electron').shell.openExternal(fullUrl);
 	}
 }
