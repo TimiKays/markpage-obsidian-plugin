@@ -462,10 +462,15 @@ export default class MarkPagePlugin extends Plugin {
 	}
 
 	openMarkPage() {
-		const mcpUrl = `http://localhost:${this.settings.serverPort}`;
-		// 加时间戳强制刷新，避免浏览器缓存页面
+		const data: Record<string, unknown> = {};
+		if (pendingConfig?.markdown) data.markdown = pendingConfig.markdown;
+		if (pendingConfig?.themeId) data.themeId = pendingConfig.themeId;
+		if (pendingConfig?.coverConfig) data.coverConfig = pendingConfig.coverConfig;
+		pendingConfig = null;
+
+		const encoded = encodeURIComponent(JSON.stringify(data));
 		const timestamp = Date.now();
-		const fullUrl = `${MARKPAGE_URL}?mcpUrl=${encodeURIComponent(mcpUrl)}&_t=${timestamp}`;
+		const fullUrl = `${MARKPAGE_URL}?from=obsidian&_t=${timestamp}#data=${encoded}`;
 		(window as any).require('electron').shell.openExternal(fullUrl);
 	}
 }

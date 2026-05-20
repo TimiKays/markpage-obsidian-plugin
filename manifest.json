@@ -1,7 +1,7 @@
 {
   "id": "markpage-sync",
   "name": "MarkPage Sync",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "minAppVersion": "0.15.0",
   "description": "Sync notes to MarkPage for beautiful image generation. 一键将笔记转为精美排版图片. Supports images, multiple themes. 支持图片自动处理、多主题选择.",
   "author": "TimiKays",

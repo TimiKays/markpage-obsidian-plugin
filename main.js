@@ -457,8 +457,17 @@ var MarkPagePlugin = class extends import_obsidian.Plugin {
     return af instanceof import_obsidian.TFile ? af : null;
   }
   openMarkPage() {
-    const mcpUrl = `http://localhost:${this.settings.serverPort}`;
-    const fullUrl = `${MARKPAGE_URL}?mcpUrl=${encodeURIComponent(mcpUrl)}`;
+    const data = {};
+    if (pendingConfig == null ? void 0 : pendingConfig.markdown)
+      data.markdown = pendingConfig.markdown;
+    if (pendingConfig == null ? void 0 : pendingConfig.themeId)
+      data.themeId = pendingConfig.themeId;
+    if (pendingConfig == null ? void 0 : pendingConfig.coverConfig)
+      data.coverConfig = pendingConfig.coverConfig;
+    pendingConfig = null;
+    const encoded = encodeURIComponent(JSON.stringify(data));
+    const timestamp = Date.now();
+    const fullUrl = `${MARKPAGE_URL}?from=obsidian&_t=${timestamp}#data=${encoded}`;
     window.require("electron").shell.openExternal(fullUrl);
   }
 };
